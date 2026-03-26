@@ -7,19 +7,19 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 # ── Common static library ──────────────────────────────────────────────────
 add_library(dna_common STATIC
-    src/common/dna_utils.cpp
-    src/common/smith_waterman.cpp
-    src/common/kmp.cpp
+    common/dna_utils.cpp
+    common/smith_waterman.cpp
+    common/kmp.cpp
 )
 target_include_directories(dna_common PUBLIC include)
 
 # ── Sequential baseline ────────────────────────────────────────────────────
-add_executable(dna_sequential src/sequential/main_sequential.cpp)
+add_executable(dna_sequential sequential/main_sequential.cpp)
 target_link_libraries(dna_sequential PRIVATE dna_common)
 
 # ── OpenMP ─────────────────────────────────────────────────────────────────
 find_package(OpenMP REQUIRED)
-add_executable(dna_openmp src/openmp/main_openmp.cpp)
+add_executable(dna_openmp openmp/main_openmp.cpp)
 target_link_libraries(dna_openmp PRIVATE dna_common OpenMP::OpenMP_CXX)
 
 # ── MPI ────────────────────────────────────────────────────────────────────
@@ -34,27 +34,27 @@ if(WIN32)
         message(WARNING "MS-MPI not found — dna_mpi will be skipped. "
                         "Install from https://github.com/microsoft/Microsoft-MPI/releases")
     else()
-        add_executable(dna_mpi src/mpi/main_mpi.cpp)
+        add_executable(dna_mpi mpi/main_mpi.cpp)
         target_include_directories(dna_mpi PRIVATE ${MSMPI_INCLUDE_DIR})
         target_link_libraries(dna_mpi PRIVATE dna_common ${MSMPI_LIB})
     endif()
 else()
     # WSL2 / Linux — OpenMPI
     find_package(MPI REQUIRED)
-    add_executable(dna_mpi src/mpi/main_mpi.cpp)
+    add_executable(dna_mpi mpi/main_mpi.cpp)
     target_link_libraries(dna_mpi PRIVATE dna_common MPI::MPI_CXX)
 endif()
 
 # ── OpenCL ─────────────────────────────────────────────────────────────────
 find_package(OpenCL REQUIRED)
-add_executable(dna_opencl src/opencl/main_opencl.cpp)
+add_executable(dna_opencl opencl/main_opencl.cpp)
 target_link_libraries(dna_opencl PRIVATE dna_common OpenCL::OpenCL)
 
 # Copy .cl kernel files next to the executable after build
 add_custom_command(TARGET dna_opencl POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_SOURCE_DIR}/src/opencl/sw_kernel.cl
-        ${CMAKE_SOURCE_DIR}/src/opencl/kmp_kernel.cl
+        ${CMAKE_SOURCE_DIR}/opencl/sw_kernel.cl
+        ${CMAKE_SOURCE_DIR}/opencl/kmp_kernel.cl
         $<TARGET_FILE_DIR:dna_opencl>
     COMMENT "Copying OpenCL kernel files to build directory"
 )
@@ -78,23 +78,23 @@ else()
     )
 
     add_executable(dna_ui
-        src/ui/main_ui.cpp
-        src/ui/sw_visualizer.cpp
-        src/ui/benchmark_panel.cpp
+        ui/main_ui.cpp
+        ui/sw_visualizer.cpp
+        ui/benchmark_panel.cpp
         ${IMGUI_SOURCES}
     )
     target_include_directories(dna_ui PRIVATE
         ${IMGUI_DIR}
         ${IMGUI_DIR}/backends
         include
-        src/ui
+        ui
     )
     target_link_libraries(dna_ui PRIVATE dna_common OpenMP::OpenMP_CXX OpenCL::OpenCL)
 
     # Copy sw_kernel.cl next to dna_ui so the in-process OpenCL benchmark can find it
     add_custom_command(TARGET dna_ui POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            ${CMAKE_SOURCE_DIR}/src/opencl/sw_kernel.cl
+            ${CMAKE_SOURCE_DIR}/opencl/sw_kernel.cl
             $<TARGET_FILE_DIR:dna_ui>
         COMMENT "Copying sw_kernel.cl for dna_ui OpenCL benchmark"
     )
