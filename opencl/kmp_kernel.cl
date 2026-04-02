@@ -37,15 +37,38 @@ __kernel void naive_search(
 }
 
 /*
- * Count the total number of matches across the matches[] array.
- * Launched with global_size = 1 after naive_search completes.
+ * Count the total number of matches using parallel tree-based reduction.
+ * Work-group size should be a power of 2 (e.g., 256).
+ * Global size should be a multiple of work-group size.
  */
 __kernel void count_matches(
     __global const int* matches,
     int n,
-    __global int* total)
+    __global int* total,
+    __local int* scratch)
 {
-    int count = 0;
-    for (int i = 0; i < n; ++i) count += matches[i];
-    *total = count;
+    int gid = get_global_id(0);
+    int lid = get_local_id(0);
+    int wg_size = get_local_size(0);
+    int group_id = get_group_id(0);
+    int num_groups = get_num_groups(0);
+    
+    // Each work-item loads one element (or 0 if out of bounds)
+    int local_sum = (gid < n) ? matches[gid] : 0;
+    scratch[lid] = local_sum;
+    barrier(CLK_LOCAL_MEM_FENCE);
+    
+    // Tree-based reduction within work-group
+    for (int offset = wg_size / 2; offset > 0; offset >>= 1) {
+        if (lid < offset) {
+            scratch[lid] += scratch[lid + offset];
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+    
+    // First work-item in each group writes partial sum to global memory
+    if (lid == 0) {
+        // Use atomic add to accumulate across all work-groups
+        atomic_add(total, scratch[0]);
+    }
 }

@@ -71,8 +71,24 @@ static cl_program build_program(cl_context ctx, cl_device_id dev,
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
-        std::cerr << "Usage: dna_opencl <fasta_file>\n";
+        std::cerr << "Usage: dna_opencl <fasta_file> [pattern_length]\n";
+        std::cerr << "  pattern_length: Length of pattern to search (default: min(query_len, 50))\n";
         return 1;
+    }
+    
+    // Parse optional pattern length argument
+    int pattern_length = -1;  // -1 means auto-detect
+    if (argc >= 3) {
+        try {
+            pattern_length = std::stoi(argv[2]);
+            if (pattern_length <= 0) {
+                std::cerr << "Error: pattern_length must be positive\n";
+                return 1;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "Error parsing pattern_length: " << e.what() << '\n';
+            return 1;
+        }
     }
 
     // ── Load sequences ─────────────────────────────────────────────────────
@@ -115,27 +131,72 @@ int main(int argc, char* argv[]) {
 
     char dev_name[256] = {};
     clGetDeviceInfo(device, CL_DEVICE_NAME, sizeof(dev_name), dev_name, nullptr);
-    std::cout << "OpenCL device : " << dev_name << "\n\n";
+    std::cout << "OpenCL device : " << dev_name << "\n";
+    
+    // Query device memory capacity
+    cl_ulong device_mem_size = 0;
+    clGetDeviceInfo(device, CL_DEVICE_GLOBAL_MEM_SIZE, 
+                    sizeof(device_mem_size), &device_mem_size, nullptr);
+    std::cout << "Device memory : " << (device_mem_size / (1024*1024)) << " MB\n\n";
+    
+    // Calculate required memory for Smith-Waterman
+    std::size_t h_elems = static_cast<std::size_t>((m + 1) * (n + 1));
+    std::size_t sw_mem_required = h_elems * sizeof(cl_int) +  // H matrix
+                                   m + n +                      // query + ref sequences
+                                   3 * sizeof(cl_int);          // score, row, col
+    
+    // Calculate required memory for pattern search
+    std::size_t kmp_mem_required = n +                         // text
+                                    50 +                        // pattern (max)
+                                    n * sizeof(cl_int) +        // matches array
+                                    sizeof(cl_int);             // total
+    
+    std::size_t total_mem_required = sw_mem_required + kmp_mem_required;
+    
+    // Check if we have enough device memory (leave 10% margin for driver overhead)
+    if (total_mem_required > static_cast<std::size_t>(device_mem_size * 0.9)) {
+        std::cerr << "Error: Sequences too large for device memory!\n";
+        std::cerr << "  Required: " << (total_mem_required / (1024*1024)) << " MB\n";
+        std::cerr << "  Available: " << (device_mem_size / (1024*1024)) << " MB\n";
+        std::cerr << "  Consider using smaller sequences or upgrading GPU.\n";
+        return 1;
+    }
+    
+    std::cout << "[INFO] Memory usage: " << (total_mem_required / (1024*1024)) 
+              << " MB / " << (device_mem_size / (1024*1024)) << " MB\n\n";
 
     // ── Context + command queue (profiling enabled) ────────────────────────
     cl_int err;
     cl_context ctx = clCreateContext(nullptr, 1, &device, nullptr, nullptr, &err);
     CL_CHECK(err);
 
+    cl_queue_properties queue_props[] = {CL_QUEUE_PROPERTIES, CL_QUEUE_PROFILING_ENABLE, 0};
     cl_command_queue queue =
-        clCreateCommandQueue(ctx, device, CL_QUEUE_PROFILING_ENABLE, &err);
+        clCreateCommandQueueWithProperties(ctx, device, queue_props, &err);
     CL_CHECK(err);
 
     // ══════════════════════════════════════════════════════════════════════
     // Smith-Waterman (wavefront)
     // ══════════════════════════════════════════════════════════════════════
 
-    cl_program sw_prog      = build_program(ctx, device, sw_src);
-    cl_kernel  sw_kern      = clCreateKernel(sw_prog, "sw_wavefront", &err); CL_CHECK(err);
-    cl_kernel  findmax_kern = clCreateKernel(sw_prog, "find_max",     &err); CL_CHECK(err);
+    cl_program sw_prog = build_program(ctx, device, sw_src);
+    
+    // Query device capabilities for optimization strategy
+    cl_ulong max_work_group_size = 0;
+    clGetDeviceInfo(device, CL_DEVICE_MAX_WORK_GROUP_SIZE, 
+                    sizeof(max_work_group_size), &max_work_group_size, nullptr);
+    
+    int max_diag_len = (m < n) ? m : n;
+    bool use_optimized = (max_diag_len <= (int)max_work_group_size);
+    
+    // Select kernel based on sequence size
+    const char* kernel_name = use_optimized ? "sw_wavefront_optimized" : "sw_wavefront";
+    cl_kernel sw_kern = clCreateKernel(sw_prog, kernel_name, &err); 
+    CL_CHECK(err);
+    cl_kernel findmax_kern = clCreateKernel(sw_prog, "find_max", &err); 
+    CL_CHECK(err);
 
-    // Allocate DP matrix (zero-initialised)
-    std::size_t h_elems = static_cast<std::size_t>((m + 1) * (n + 1));
+    // Allocate DP matrix (zero-initialised) - reuse h_elems from memory check
     std::vector<cl_int> H_host(h_elems, 0);
 
     cl_mem H_buf  = clCreateBuffer(ctx,
@@ -152,36 +213,61 @@ int main(int argc, char* argv[]) {
     cl_mem row_buf   = clCreateBuffer(ctx, CL_MEM_WRITE_ONLY, sizeof(cl_int), nullptr, &err); CL_CHECK(err);
     cl_mem col_buf   = clCreateBuffer(ctx, CL_MEM_WRITE_ONLY, sizeof(cl_int), nullptr, &err); CL_CHECK(err);
 
-    // Static kernel args (indices 0-4, 6-8 — index 5 = diag, set per iteration)
     cl_int sw_m = m, sw_n = n;
     cl_int sw_match = SW_MATCH, sw_mm = SW_MISMATCH, sw_gap = SW_GAP;
-    CL_CHECK(clSetKernelArg(sw_kern, 0, sizeof(H_buf),  &H_buf));
-    CL_CHECK(clSetKernelArg(sw_kern, 1, sizeof(q_buf),  &q_buf));
-    CL_CHECK(clSetKernelArg(sw_kern, 2, sizeof(r_buf),  &r_buf));
-    CL_CHECK(clSetKernelArg(sw_kern, 3, sizeof(cl_int), &sw_m));
-    CL_CHECK(clSetKernelArg(sw_kern, 4, sizeof(cl_int), &sw_n));
-    // arg 5 = diag (below)
-    CL_CHECK(clSetKernelArg(sw_kern, 6, sizeof(cl_int), &sw_match));
-    CL_CHECK(clSetKernelArg(sw_kern, 7, sizeof(cl_int), &sw_mm));
-    CL_CHECK(clSetKernelArg(sw_kern, 8, sizeof(cl_int), &sw_gap));
-
-    // Wavefront loop — collect first and last events for timing
+    
     std::vector<cl_event> wave_events;
-    wave_events.reserve(static_cast<std::size_t>(m + n));
-
-    for (int diag = 2; diag <= m + n; ++diag) {
-        int i_min = std::max(1, diag - n);
-        int i_max = std::min(m, diag - 1);
-        if (i_min > i_max) continue;
-
-        std::size_t global = static_cast<std::size_t>(i_max - i_min + 1);
-        cl_int diag_arg = diag;
-        CL_CHECK(clSetKernelArg(sw_kern, 5, sizeof(cl_int), &diag_arg));
-
-        cl_event ev;
+    cl_event sw_event;
+    
+    if (use_optimized) {
+        // Single-kernel optimized path
+        std::cout << "[INFO] Using optimized single-kernel SW (max_diag=" << max_diag_len << ")\n";
+        
+        CL_CHECK(clSetKernelArg(sw_kern, 0, sizeof(H_buf),  &H_buf));
+        CL_CHECK(clSetKernelArg(sw_kern, 1, sizeof(q_buf),  &q_buf));
+        CL_CHECK(clSetKernelArg(sw_kern, 2, sizeof(r_buf),  &r_buf));
+        CL_CHECK(clSetKernelArg(sw_kern, 3, sizeof(cl_int), &sw_m));
+        CL_CHECK(clSetKernelArg(sw_kern, 4, sizeof(cl_int), &sw_n));
+        CL_CHECK(clSetKernelArg(sw_kern, 5, sizeof(cl_int), &sw_match));
+        CL_CHECK(clSetKernelArg(sw_kern, 6, sizeof(cl_int), &sw_mm));
+        CL_CHECK(clSetKernelArg(sw_kern, 7, sizeof(cl_int), &sw_gap));
+        
+        std::size_t global_size = static_cast<std::size_t>(max_diag_len);
         CL_CHECK(clEnqueueNDRangeKernel(queue, sw_kern, 1,
-                                         nullptr, &global, nullptr, 0, nullptr, &ev));
-        wave_events.push_back(ev);
+                                         nullptr, &global_size, nullptr, 0, nullptr, &sw_event));
+        wave_events.push_back(sw_event);
+    } else {
+        // Multi-kernel fallback for large sequences
+        std::cout << "[INFO] Using multi-kernel SW fallback (max_diag=" << max_diag_len << ")\n";
+        
+        // Static kernel args (indices 0-4, 6-8 — index 5 = diag, set per iteration)
+        CL_CHECK(clSetKernelArg(sw_kern, 0, sizeof(H_buf),  &H_buf));
+        CL_CHECK(clSetKernelArg(sw_kern, 1, sizeof(q_buf),  &q_buf));
+        CL_CHECK(clSetKernelArg(sw_kern, 2, sizeof(r_buf),  &r_buf));
+        CL_CHECK(clSetKernelArg(sw_kern, 3, sizeof(cl_int), &sw_m));
+        CL_CHECK(clSetKernelArg(sw_kern, 4, sizeof(cl_int), &sw_n));
+        // arg 5 = diag (below)
+        CL_CHECK(clSetKernelArg(sw_kern, 6, sizeof(cl_int), &sw_match));
+        CL_CHECK(clSetKernelArg(sw_kern, 7, sizeof(cl_int), &sw_mm));
+        CL_CHECK(clSetKernelArg(sw_kern, 8, sizeof(cl_int), &sw_gap));
+
+        // Wavefront loop — collect first and last events for timing
+        wave_events.reserve(static_cast<std::size_t>(m + n));
+
+        for (int diag = 2; diag <= m + n; ++diag) {
+            int i_min = std::max(1, diag - n);
+            int i_max = std::min(m, diag - 1);
+            if (i_min > i_max) continue;
+
+            std::size_t global = static_cast<std::size_t>(i_max - i_min + 1);
+            cl_int diag_arg = diag;
+            CL_CHECK(clSetKernelArg(sw_kern, 5, sizeof(cl_int), &diag_arg));
+
+            cl_event ev;
+            CL_CHECK(clEnqueueNDRangeKernel(queue, sw_kern, 1,
+                                             nullptr, &global, nullptr, 0, nullptr, &ev));
+            wave_events.push_back(ev);
+        }
     }
 
     // find_max — runs after all wavefront kernels complete
@@ -234,8 +320,27 @@ int main(int argc, char* argv[]) {
     cl_kernel  kmp_kern  = clCreateKernel(kmp_prog, "naive_search",  &err); CL_CHECK(err);
     cl_kernel  cnt_kern  = clCreateKernel(kmp_prog, "count_matches", &err); CL_CHECK(err);
 
-    const std::string pattern =
-        query.substr(0, std::min<std::size_t>(20, query.size()));
+    // Determine pattern length (default to min(query_len, 50) if not specified)
+    std::size_t max_pattern_len = std::min<std::size_t>(query.size(), 50);
+    if (pattern_length > 0) {
+        max_pattern_len = static_cast<std::size_t>(pattern_length);
+    }
+    
+    // Validate pattern length
+    if (max_pattern_len > query.size()) {
+        std::cerr << "Warning: pattern_length (" << max_pattern_len 
+                  << ") exceeds query length (" << query.size() 
+                  << "), using query length\n";
+        max_pattern_len = query.size();
+    }
+    if (max_pattern_len > ref.size()) {
+        std::cerr << "Warning: pattern_length (" << max_pattern_len 
+                  << ") exceeds reference length (" << ref.size() 
+                  << "), using reference length\n";
+        max_pattern_len = ref.size();
+    }
+    
+    const std::string pattern = query.substr(0, max_pattern_len);
     cl_int p_len = static_cast<int>(pattern.size());
     cl_int t_len = static_cast<int>(ref.size());
 
@@ -250,8 +355,11 @@ int main(int argc, char* argv[]) {
         const_cast<char*>(pattern.data()), &err); CL_CHECK(err);
     cl_mem mat_buf = clCreateBuffer(ctx, CL_MEM_WRITE_ONLY,
         static_cast<std::size_t>(t_len) * sizeof(cl_int), nullptr, &err); CL_CHECK(err);
-    cl_mem tot_buf = clCreateBuffer(ctx, CL_MEM_WRITE_ONLY,
-        sizeof(cl_int), nullptr, &err); CL_CHECK(err);
+    
+    // Initialize total count to 0 before atomic adds
+    cl_int zero = 0;
+    cl_mem tot_buf = clCreateBuffer(ctx, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
+        sizeof(cl_int), &zero, &err); CL_CHECK(err);
 
     CL_CHECK(clSetKernelArg(kmp_kern, 0, sizeof(txt_buf), &txt_buf));
     CL_CHECK(clSetKernelArg(kmp_kern, 1, sizeof(cl_int),  &t_len));
@@ -259,16 +367,25 @@ int main(int argc, char* argv[]) {
     CL_CHECK(clSetKernelArg(kmp_kern, 3, sizeof(cl_int),  &p_len));
     CL_CHECK(clSetKernelArg(kmp_kern, 4, sizeof(mat_buf), &mat_buf));
 
-    std::size_t kmp_global = static_cast<std::size_t>(t_len);
+    // Use optimized work-group size (256 is typically good for most GPUs)
+    std::size_t kmp_local = 256;
+    std::size_t kmp_global = ((t_len + kmp_local - 1) / kmp_local) * kmp_local;
+    
     cl_event kmp_ev, cnt_ev;
     CL_CHECK(clEnqueueNDRangeKernel(queue, kmp_kern, 1,
-                                     nullptr, &kmp_global, nullptr, 0, nullptr, &kmp_ev));
+                                     nullptr, &kmp_global, &kmp_local, 0, nullptr, &kmp_ev));
 
+    // Setup parallel reduction with work-group size of 256
+    std::size_t local_size = 256;
+    std::size_t global_size = ((t_len + local_size - 1) / local_size) * local_size;
+    
     CL_CHECK(clSetKernelArg(cnt_kern, 0, sizeof(mat_buf), &mat_buf));
     CL_CHECK(clSetKernelArg(cnt_kern, 1, sizeof(cl_int),  &t_len));
     CL_CHECK(clSetKernelArg(cnt_kern, 2, sizeof(tot_buf), &tot_buf));
+    CL_CHECK(clSetKernelArg(cnt_kern, 3, local_size * sizeof(cl_int), nullptr)); // __local scratch
+    
     CL_CHECK(clEnqueueNDRangeKernel(queue, cnt_kern, 1,
-                                     nullptr, &one, nullptr, 0, nullptr, &cnt_ev));
+                                     nullptr, &global_size, &local_size, 0, nullptr, &cnt_ev));
     CL_CHECK(clFinish(queue));
 
     cl_int hit_total = 0;
