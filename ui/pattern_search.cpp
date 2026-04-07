@@ -134,11 +134,11 @@ static PatternSearchResult run_search(PatternAlgorithm algo,
 void render_pattern_search(PatternSearchState& state) {
     // ── Input section ──────────────────────────────────────────────────────
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.5f, 0.9f, 1.0f, 1.0f));
-    ImGui::SeparatorText("📝 Input");
+    ImGui::SeparatorText(" Input");
     ImGui::PopStyleColor();
     
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.9f, 0.9f, 1.0f, 1.0f));
-    ImGui::Text("📄 Text (Reference Sequence):");
+    ImGui::Text(" Text (Reference Sequence):");
     ImGui::PopStyleColor();
     ImGui::SetNextItemWidth(-1.0f);
     if (ImGui::InputTextMultiline("##text", state.text_buf, sizeof(state.text_buf), 
@@ -150,7 +150,7 @@ void render_pattern_search(PatternSearchState& state) {
     
     ImGui::Spacing();
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.9f, 0.6f, 1.0f));
-    ImGui::Text("🔍 Pattern to Search:");
+    ImGui::Text(" Pattern to Search:");
     ImGui::PopStyleColor();
     ImGui::SetNextItemWidth(450.0f);
     if (ImGui::InputText("##pattern", state.pattern_buf, sizeof(state.pattern_buf))) {
@@ -161,12 +161,12 @@ void render_pattern_search(PatternSearchState& state) {
     // ── Algorithm selection ────────────────────────────────────────────────
     ImGui::Spacing();
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 1.0f, 0.6f, 1.0f));
-    ImGui::SeparatorText("🧮 Algorithm Selection");
+    ImGui::SeparatorText(" Algorithm Selection");
     ImGui::PopStyleColor();
     
     // KMP Radio Button
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.9f, 1.0f, 1.0f));
-    if (ImGui::RadioButton("⚡ KMP (Knuth-Morris-Pratt) - O(n+m) guaranteed, best for repeating patterns", 
+    if (ImGui::RadioButton(" KMP (Knuth-Morris-Pratt) - O(n+m) guaranteed, best for repeating patterns", 
                           state.algorithm == PatternAlgorithm::KMP)) {
         state.algorithm = PatternAlgorithm::KMP;
     }
@@ -174,7 +174,7 @@ void render_pattern_search(PatternSearchState& state) {
     
     // Boyer-Moore Radio Button
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.8f, 0.4f, 1.0f));
-    if (ImGui::RadioButton("🚀 Boyer-Moore - O(n/m) average, fast for long patterns in DNA", 
+    if (ImGui::RadioButton(" Boyer-Moore - O(n/m) average, fast for long patterns in DNA", 
                           state.algorithm == PatternAlgorithm::BoyerMoore)) {
         state.algorithm = PatternAlgorithm::BoyerMoore;
     }
@@ -185,18 +185,18 @@ void render_pattern_search(PatternSearchState& state) {
     ImGui::Spacing();
     
     // Options
-    ImGui::Checkbox("⚖ Compare both algorithms", &state.show_comparison);
+    ImGui::Checkbox(" Compare both algorithms", &state.show_comparison);
     ImGui::SameLine();
-    ImGui::Checkbox("🎨 Highlight matches", &state.highlight_matches);
+    ImGui::Checkbox(" Highlight matches", &state.highlight_matches);
     ImGui::SameLine();
-    ImGui::Checkbox("📊 Show metrics", &state.show_metrics);
+    ImGui::Checkbox(" Show metrics", &state.show_metrics);
     
     // ── Search button ──────────────────────────────────────────────────────
     ImGui::Spacing();
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.3f, 0.6f, 0.9f, 1.0f));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.4f, 0.7f, 1.0f, 1.0f));
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.2f, 0.5f, 0.8f, 1.0f));
-    if (ImGui::Button("🔍 Search", ImVec2(140, 32))) {
+    if (ImGui::Button(" Search", ImVec2(140, 32))) {
         std::string text(state.text_buf);
         std::string pattern(state.pattern_buf);
         
@@ -221,7 +221,7 @@ void render_pattern_search(PatternSearchState& state) {
     // Validation
     if (strlen(state.pattern_buf) == 0) {
         ImGui::SameLine();
-        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "  ⚠ Pattern cannot be empty");
+        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "   Pattern cannot be empty");
     }
     
     // ── Results section ────────────────────────────────────────────────────
@@ -239,14 +239,14 @@ void render_pattern_search(PatternSearchState& state) {
         ImGui::Spacing();
         ImGui::Spacing();
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 1.0f, 0.6f, 1.0f));
-        ImGui::SeparatorText("✅ Results");
+        ImGui::SeparatorText(" Results");
         ImGui::PopStyleColor();
         
         // ── Performance metrics ────────────────────────────────────────────
         if (state.show_metrics) {
             if (state.show_comparison && state.kmp_result.computed && state.bm_result.computed) {
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.9f, 0.5f, 1.0f));
-                ImGui::Text("⚖ Algorithm Comparison:");
+                ImGui::Text(" Algorithm Comparison:");
                 ImGui::PopStyleColor();
                 ImGui::Spacing();
                 
@@ -255,10 +255,10 @@ void render_pattern_search(PatternSearchState& state) {
                                      ImGuiTableFlags_Borders | 
                                      ImGuiTableFlags_RowBg |
                                      ImGuiTableFlags_Resizable)) {
-                    ImGui::TableSetupColumn("🧮 Algorithm", ImGuiTableColumnFlags_WidthFixed, 120);
-                    ImGui::TableSetupColumn("⏱ Time (ms)", ImGuiTableColumnFlags_WidthFixed, 100);
-                    ImGui::TableSetupColumn("🎯 Matches", ImGuiTableColumnFlags_WidthFixed, 90);
-                    ImGui::TableSetupColumn("🚀 Speedup", ImGuiTableColumnFlags_WidthStretch);
+                    ImGui::TableSetupColumn(" Algorithm", ImGuiTableColumnFlags_WidthFixed, 120);
+                    ImGui::TableSetupColumn(" Time (ms)", ImGuiTableColumnFlags_WidthFixed, 100);
+                    ImGui::TableSetupColumn(" Matches", ImGuiTableColumnFlags_WidthFixed, 90);
+                    ImGui::TableSetupColumn(" Speedup", ImGuiTableColumnFlags_WidthStretch);
                     ImGui::TableHeadersRow();
                     
                     // KMP row
@@ -281,7 +281,7 @@ void render_pattern_search(PatternSearchState& state) {
                     // Boyer-Moore row
                     ImGui::TableNextRow();
                     ImGui::TableNextColumn();
-                    ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.4f, 1.0f), "🚀 Boyer-Moore");
+                    ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.4f, 1.0f), " Boyer-Moore");
                     ImGui::TableNextColumn();
                     ImGui::TableNextColumn();
                     ImGui::Text("%.3f", state.bm_result.time_ms);
@@ -302,7 +302,7 @@ void render_pattern_search(PatternSearchState& state) {
                 ImGui::Spacing();
             } else {
                 // Single algorithm results
-                const char* algo_name = (state.algorithm == PatternAlgorithm::KMP) ? "⚡ KMP" : "🚀 Boyer-Moore";
+                const char* algo_name = (state.algorithm == PatternAlgorithm::KMP) ? " KMP" : " Boyer-Moore";
                 ImVec4 algo_color = (state.algorithm == PatternAlgorithm::KMP) ? 
                                    ImVec4(0.6f, 0.9f, 1.0f, 1.0f) : ImVec4(1.0f, 0.8f, 0.4f, 1.0f);
                 
@@ -316,13 +316,13 @@ void render_pattern_search(PatternSearchState& state) {
                 
                 ImGui::NextColumn();
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 1.0f, 0.8f, 1.0f));
-                ImGui::Text("⏱ %.3f ms", current_result->time_ms);
+                ImGui::Text(" %.3f ms", current_result->time_ms);
                 ImGui::PopStyleColor();
                 ImGui::Text("Execution Time");
                 
                 ImGui::NextColumn();
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.9f, 0.5f, 1.0f));
-                ImGui::Text("🎯 %zu matches", current_result->positions.size());
+                ImGui::Text(" %zu matches", current_result->positions.size());
                 ImGui::PopStyleColor();
                 ImGui::Text("Matches Found");
                 
@@ -335,7 +335,7 @@ void render_pattern_search(PatternSearchState& state) {
                     int pattern_len = static_cast<int>(strlen(state.pattern_buf));
                     float density = (100.0f * current_result->positions.size() * pattern_len) / 
                                    std::max(text_len, 1);
-                    ImGui::Text("📊 Match Density: %.2f%%", density);
+                    ImGui::Text(" Match Density: %.2f%%", density);
                 }
             }
             ImGui::Spacing();
@@ -344,7 +344,7 @@ void render_pattern_search(PatternSearchState& state) {
         // ── Match positions table ──────────────────────────────────────────
         if (!current_result->positions.empty()) {
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.9f, 0.8f, 1.0f, 1.0f));
-            ImGui::SeparatorText("📍 Match Positions");
+            ImGui::SeparatorText(" Match Positions");
             ImGui::PopStyleColor();
             
             ImGui::PushStyleColor(ImGuiCol_TableHeaderBg, ImVec4(0.25f, 0.3f, 0.35f, 1.0f));
@@ -418,7 +418,7 @@ void render_pattern_search(PatternSearchState& state) {
             if (state.highlight_matches) {
                 ImGui::Spacing();
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.8f, 0.9f, 1.0f));
-                ImGui::SeparatorText("🎨 Visual Match Display");
+                ImGui::SeparatorText(" Visual Match Display");
                 ImGui::PopStyleColor();
                 
                 // Visual diagram showing matches
@@ -516,14 +516,14 @@ void render_pattern_search(PatternSearchState& state) {
             }
         } else {
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.8f, 0.5f, 1.0f));
-            ImGui::Text("🔍 No matches found.");
+            ImGui::Text(" No matches found.");
             ImGui::PopStyleColor();
         }
     } else if (!state.kmp_result.computed && !state.bm_result.computed) {
         ImGui::Spacing();
         ImGui::Spacing();
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 0.7f, 0.8f, 1.0f));
-        ImGui::Text("💡 Enter a text and pattern, then click Search to find matches.");
+        ImGui::Text(" Enter a text and pattern, then click Search to find matches.");
         ImGui::PopStyleColor();
     }
     
@@ -531,20 +531,20 @@ void render_pattern_search(PatternSearchState& state) {
     if (current_result && current_result->computed && state.show_metrics) {
         ImGui::Spacing();
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.9f, 1.0f, 1.0f));
-        ImGui::SeparatorText("📊 Statistics");
+        ImGui::SeparatorText(" Statistics");
         ImGui::PopStyleColor();
         
         ImGui::Columns(3, "stats_cols", false);
         
-        ImGui::Text("📄 Text Length:");
+        ImGui::Text(" Text Length:");
         ImGui::TextColored(ImVec4(0.8f, 1.0f, 0.8f, 1.0f), "%zu characters", strlen(state.text_buf));
         
         ImGui::NextColumn();
-        ImGui::Text("🔍 Pattern Length:");
+        ImGui::Text(" Pattern Length:");
         ImGui::TextColored(ImVec4(1.0f, 0.9f, 0.6f, 1.0f), "%zu characters", strlen(state.pattern_buf));
         
         ImGui::NextColumn();
-        ImGui::Text("🎯 Total Matches:");
+        ImGui::Text(" Total Matches:");
         ImGui::TextColored(ImVec4(0.8f, 0.9f, 1.0f, 1.0f), "%zu", current_result->positions.size());
         
         ImGui::Columns(1);

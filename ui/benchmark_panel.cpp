@@ -394,32 +394,61 @@ static void draw_bar_chart(const std::vector<BenchmarkEntry>& entries,
     };
 
     // Icons for each variant
-    const char* icons[] = {"⚡", "⚙", "⚙", "⚙", "📡", "🖥"};
+    // const char* icons[] = {"⚡", "⚙", "⚙", "⚙", "📡", "🖥"};
 
+    // for (std::size_t idx = 0; idx < entries.size(); ++idx) {
+    //     const auto& e = entries[idx];
+    //     float y = cursor.y + static_cast<float>(idx) * (BAR_H + BAR_PAD);
+
+    //     // Icon + Label with better formatting
+    //     ImGui::SetCursorScreenPos(ImVec2(cursor.x, y + 4));
+    //     ImGui::PushStyleColor(ImGuiCol_Text, colors[idx % 6]);
+    //     ImGui::Text("%s", icons[idx % 6]);
+    //     ImGui::PopStyleColor();
+        
+    //     ImGui::SameLine();
+    //     ImGui::Text("%-12s", e.label);
+
+    //     if (!e.measured) {
+    //         ImGui::SetCursorScreenPos(ImVec2(cursor.x + LABEL_W, y + 4));
+    //         if (!e.error.empty()) {
+    //             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.4f, 0.4f, 1.0f));
+    //             // ImGui::Text("❌ %s", e.error.c_str());
+    //             ImGui::PopStyleColor();
+    //         } else {
+    //             ImGui::TextDisabled("(not run)");
+    //         }
+    //         continue;
+    //     }
+
+
+    // fix UI
     for (std::size_t idx = 0; idx < entries.size(); ++idx) {
         const auto& e = entries[idx];
         float y = cursor.y + static_cast<float>(idx) * (BAR_H + BAR_PAD);
 
-        // Icon + Label with better formatting
+        // Position the cursor for the label (No icons)
         ImGui::SetCursorScreenPos(ImVec2(cursor.x, y + 4));
-        ImGui::PushStyleColor(ImGuiCol_Text, colors[idx % 6]);
-        ImGui::Text("%s", icons[idx % 6]);
-        ImGui::PopStyleColor();
         
-        ImGui::SameLine();
+        // Label with color based on implementation type
+        ImGui::PushStyleColor(ImGuiCol_Text, colors[idx % 6]);
         ImGui::Text("%-12s", e.label);
+        ImGui::PopStyleColor();
 
         if (!e.measured) {
             ImGui::SetCursorScreenPos(ImVec2(cursor.x + LABEL_W, y + 4));
             if (!e.error.empty()) {
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.4f, 0.4f, 1.0f));
-                ImGui::Text("❌ %s", e.error.c_str());
+                ImGui::Text("Error: %s", e.error.c_str()); // Removed the ❌ emoji
                 ImGui::PopStyleColor();
             } else {
                 ImGui::TextDisabled("(not run)");
             }
             continue;
         }
+        
+
+
 
         float bar_w = static_cast<float>(e.time_ms / max_t) * avail_w;
         ImVec4 cv   = colors[idx % 6];
@@ -475,22 +504,22 @@ static void draw_bar_chart(const std::vector<BenchmarkEntry>& entries,
 void render_benchmark_panel(BenchmarkState& state) {
     // ── Configuration Section ──────────────────────────────────────────────
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.4f, 0.8f, 1.0f, 1.0f));
-    ImGui::SeparatorText("⚙ Configuration");
+    ImGui::SeparatorText("Configuration");
     ImGui::PopStyleColor();
 
     ImGui::Columns(3, "config_cols", false);
     
-    ImGui::Text("📏 Sequence Length");
+    ImGui::Text(" Sequence Length");
     ImGui::SetNextItemWidth(-1);
     ImGui::SliderInt("##seq_len", &state.seq_length, 50, 1000, "%d bp");
     
     ImGui::NextColumn();
-    ImGui::Text("🗄 Database Size");
+    ImGui::Text("Database Size");
     ImGui::SetNextItemWidth(-1);
     ImGui::SliderInt("##db_size", &state.db_size, 5, 200, "%d sequences");
     
     ImGui::NextColumn();
-    ImGui::Text("📡 MPI Ranks");
+    ImGui::Text(" MPI Ranks");
     ImGui::SetNextItemWidth(-1);
     ImGui::SliderInt("##mpi_ranks", &state.mpi_ranks, 1, 8, "%d ranks");
     
@@ -503,7 +532,7 @@ void render_benchmark_panel(BenchmarkState& state) {
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.7f, 0.3f, 1.0f));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.3f, 0.8f, 0.4f, 1.0f));
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.15f, 0.6f, 0.25f, 1.0f));
-    bool run = ImGui::Button("🚀 Run Benchmark", ImVec2(180, 35));
+    bool run = ImGui::Button(" Run Benchmark", ImVec2(180, 35));
     ImGui::PopStyleColor(3);
     
     ImGui::SameLine();
@@ -559,7 +588,7 @@ void render_benchmark_panel(BenchmarkState& state) {
     ImGui::Spacing();
     ImGui::Spacing();
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.8f, 0.3f, 1.0f));
-    ImGui::SeparatorText("📊 Performance Results");
+    ImGui::SeparatorText("Performance Results");
     ImGui::PopStyleColor();
 
     double base_ms = state.entries[0].measured ? state.entries[0].time_ms : 0.0;
@@ -585,13 +614,13 @@ void render_benchmark_panel(BenchmarkState& state) {
         ImGui::BeginChild("##stats", ImVec2(-1, 60), true);
         
         ImGui::Columns(3, "summary", false);
-        ImGui::Text("✅ Successful: %d / %zu", successful, state.entries.size());
+        ImGui::Text(" Successful: %d / %zu", successful, state.entries.size());
         
         ImGui::NextColumn();
-        ImGui::Text("⏱ Baseline: %.2f ms", base_ms);
+        ImGui::Text(" Baseline: %.2f ms", base_ms);
         
         ImGui::NextColumn();
-        ImGui::Text("🏆 Fastest: %s (%.2f ms)", fastest_name, fastest);
+        ImGui::Text(" Fastest: %s (%.2f ms)", fastest_name, fastest);
         
         ImGui::Columns(1);
         ImGui::EndChild();
@@ -607,7 +636,7 @@ void render_benchmark_panel(BenchmarkState& state) {
         ImGui::Spacing();
         ImGui::Spacing();
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 1.0f, 0.7f, 1.0f));
-        ImGui::SeparatorText("📈 Detailed Speedup Analysis");
+        ImGui::SeparatorText(" Detailed Speedup Analysis");
         ImGui::PopStyleColor();
         
         if (ImGui::BeginTable("speedup_tbl", 4,
