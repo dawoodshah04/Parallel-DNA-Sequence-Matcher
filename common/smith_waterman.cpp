@@ -4,6 +4,10 @@
 
 // ── Internal helpers ───────────────────────────────────────────────────────
 
+static inline int base_score(char a, char b, const ScoringParams& params) {
+    return (a == b) ? params.match : params.mismatch;
+}
+
 static inline int base_score(char a, char b) {
     return (a == b) ? SW_MATCH : SW_MISMATCH;
 }
@@ -92,12 +96,57 @@ AlignmentResult smith_waterman(const std::string& query, const std::string& ref)
 
 SWVisualizationData smith_waterman_full(const std::string& query,
                                         const std::string& ref) {
-    SWVisualizationData viz;
-    viz.matrix = smith_waterman_matrix(query, ref);
+    ScoringParams default_params;
+    return smith_waterman_full(query, ref, default_params);
+}
 
+SWVisualizationData smith_waterman_full(const std::string& query,
+                                        const std::string& ref,
+                                        const ScoringParams& params) {
+    SWVisualizationData viz;
+    
     int m = static_cast<int>(query.size());
     int n = static_cast<int>(ref.size());
 
+    // Initialize matrix
+    viz.matrix.resize(m + 1, std::vector<int>(n + 1, 0));
+
+    // Compute matrix with step tracking
+    for (int i = 1; i <= m; ++i) {
+        for (int j = 1; j <= n; ++j) {
+            CellComputation step;
+            step.row = i;
+            step.col = j;
+            step.is_match = (query[i - 1] == ref[j - 1]);
+            
+            step.from_diag = viz.matrix[i - 1][j - 1] + base_score(query[i - 1], ref[j - 1], params);
+            step.from_top  = viz.matrix[i - 1][j] + params.gap;
+            step.from_left = viz.matrix[i][j - 1] + params.gap;
+            
+            // Determine max and direction
+            int max_val = 0;
+            step.chosen_direction = 0; // 0 = zero
+            
+            if (step.from_diag >= max_val && step.from_diag > 0) {
+                max_val = step.from_diag;
+                step.chosen_direction = 1; // diagonal
+            }
+            if (step.from_left > max_val) {
+                max_val = step.from_left;
+                step.chosen_direction = 2; // left
+            }
+            if (step.from_top > max_val) {
+                max_val = step.from_top;
+                step.chosen_direction = 3; // top
+            }
+            
+            step.score = max_val;
+            viz.matrix[i][j] = max_val;
+            viz.computation_steps.push_back(step);
+        }
+    }
+
+    // Find max score
     int max_score = 0, max_i = 0, max_j = 0;
     for (int i = 1; i <= m; ++i) {
         for (int j = 1; j <= n; ++j) {
@@ -109,6 +158,7 @@ SWVisualizationData smith_waterman_full(const std::string& query,
         }
     }
 
+    // Traceback
     viz.result = traceback(viz.matrix, query, ref,
                            max_i, max_j, max_score,
                            &viz.traceback_cells);

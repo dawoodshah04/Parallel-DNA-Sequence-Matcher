@@ -1,4 +1,5 @@
 #include "app_state.h"
+#include "pattern_search.h"
 
 // GLFW + OpenGL3 ImGui backends
 #include "imgui.h"
@@ -45,6 +46,10 @@ int main(int /*argc*/, char** /*argv*/) {
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    
+    // Disable debug features that add "?" prefixes
+    io.ConfigDebugIsDebuggerPresent = false;
+    io.ConfigDebugHighlightIdConflicts = false;
 
     ImGui::StyleColorsDark();
 
@@ -120,46 +125,10 @@ int main(int /*argc*/, char** /*argv*/) {
 
                 // ── Tab 3: Pattern Search ─────────────────────────────────
                 if (ImGui::BeginTabItem("Pattern Search")) {
-                    static char txt_buf[512] = "ACGTACGTACGTACGTACGTACGT";
-                    static char pat_buf[128] = "ACGT";
-                    static bool use_bm       = false;
-                    static std::vector<int> hits;
-                    static bool searched     = false;
-
-                    ImGui::SeparatorText("Input");
-                    ImGui::SetNextItemWidth(-1.0f);
-                    ImGui::InputText("Text (reference)##ps", txt_buf, sizeof(txt_buf));
-                    ImGui::SetNextItemWidth(300.0f);
-                    ImGui::InputText("Pattern##ps", pat_buf, sizeof(pat_buf));
-                    ImGui::SameLine();
-                    ImGui::Checkbox("Boyer-Moore", &use_bm);
-                    ImGui::SameLine();
-                    if (ImGui::Button("Search##ps")) {
-                        if (use_bm) hits = boyer_moore_search(txt_buf, pat_buf);
-                        else        hits = kmp_search(txt_buf, pat_buf);
-                        searched = true;
-                    }
-
-                    if (searched) {
-                        ImGui::Spacing();
-                        ImGui::SeparatorText("Results");
-                        ImGui::Text("Algorithm : %s", use_bm ? "Boyer-Moore" : "KMP");
-                        ImGui::Text("Hits      : %zu", hits.size());
-                        if (!hits.empty()) {
-                            ImGui::Text("Positions : ");
-                            for (std::size_t k = 0; k < hits.size() && k < 50; ++k) {
-                                ImGui::SameLine();
-                                ImGui::Text("%d", hits[k]);
-                                if (k + 1 < hits.size() && k + 1 < 50)
-                                    ImGui::SameLine();
-                                ImGui::Text(",");
-                            }
-                            if (hits.size() > 50) {
-                                ImGui::SameLine();
-                                ImGui::TextDisabled("... and %zu more", hits.size() - 50);
-                            }
-                        }
-                    }
+                    static PatternSearchState ps_state;
+                    ImGui::BeginChild("##ps_scroll", ImVec2(0, 0), false, 0);
+                    render_pattern_search(ps_state);
+                    ImGui::EndChild();
                     ImGui::EndTabItem();
                 }
 

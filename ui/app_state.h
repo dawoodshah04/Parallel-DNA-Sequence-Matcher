@@ -19,6 +19,26 @@ struct SWVisualizerState {
     bool computed = false;
     float cell_size = 22.0f;    // pixels per DP cell
     int   max_vis   = 40;       // maximum rows/cols to render in grid
+    
+    // Animation state
+    bool animating = false;
+    bool paused = false;
+    int current_step = 0;       // current animation step (index into computation_steps)
+    float animation_speed = 50.0f; // steps per second
+    float step_accumulator = 0.0f;
+    
+    // Scoring parameters
+    ScoringParams scoring;
+    
+    // Interaction state
+    int hovered_row = -1;
+    int hovered_col = -1;
+    int selected_row = -1;
+    int selected_col = -1;
+    
+    // Display options
+    bool show_statistics = true;
+    bool show_cell_values = true;
 };
 
 // Defined in sw_visualizer.cpp

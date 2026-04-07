@@ -59,6 +59,34 @@ add_custom_command(TARGET dna_opencl POST_BUILD
     COMMENT "Copying OpenCL kernel files to build directory"
 )
 
+# ── CUDA ───────────────────────────────────────────────────────────────────
+include(CheckLanguage)
+check_language(CUDA)
+if(CMAKE_CUDA_COMPILER)
+    enable_language(CUDA)
+    set(CMAKE_CUDA_STANDARD 14)
+    set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+    
+    add_executable(dna_cuda 
+        cuda/main_cuda.cu
+        cuda/kernels.cu
+    )
+    target_link_libraries(dna_cuda PRIVATE dna_common)
+    target_include_directories(dna_cuda PRIVATE include)
+    
+    # Set CUDA architecture (adjust based on your GPU)
+    # Auto-detect if possible, otherwise use common architectures
+    set_target_properties(dna_cuda PROPERTIES
+        CUDA_SEPARABLE_COMPILATION ON
+        CUDA_ARCHITECTURES "50;60;70;75;80;86;89"  # Covers most GPUs from Maxwell to Ada
+    )
+    
+    message(STATUS "CUDA support enabled - dna_cuda target added")
+else()
+    message(WARNING "CUDA compiler not found — dna_cuda will be skipped. "
+                    "Install CUDA Toolkit from https://developer.nvidia.com/cuda-downloads")
+endif()
+
 # ── UI — Dear ImGui + GLFW + OpenGL3 ──────────────────────────────────────
 set(IMGUI_DIR ${CMAKE_SOURCE_DIR}/external/imgui)
 
@@ -81,6 +109,7 @@ else()
         ui/main_ui.cpp
         ui/sw_visualizer.cpp
         ui/benchmark_panel.cpp
+        ui/pattern_search.cpp
         ${IMGUI_SOURCES}
     )
     target_include_directories(dna_ui PRIVATE
